@@ -16,7 +16,7 @@ thingsRouter
 
 thingsRouter
   .route('/:thing_id')
-  //.all(requireAuth)
+  .all(requireAuth)
   .all(checkThingExists)
   .get((req, res) => {
     res.json(ThingsService.serializeThing(res.thing))
@@ -24,7 +24,7 @@ thingsRouter
 
 thingsRouter.route('/:thing_id/reviews')
   .all(checkThingExists)
-  //.all(requireAuth)
+  .all(requireAuth)
   .get((req, res, next) => {
     ThingsService.getReviewsForThing(
       req.app.get('db'),
