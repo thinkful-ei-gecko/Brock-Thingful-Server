@@ -1,3 +1,5 @@
+const bcrypt = require('bcryptjs');
+
 function makeUsersArray() {
   return [
     {
@@ -221,33 +223,62 @@ function makeThingsFixtures() {
 }
 
 function cleanTables(db) {
-  return db.raw(
-    `TRUNCATE
-      thingful_things,
-      thingful_users,
-      thingful_reviews
-      RESTART IDENTITY CASCADE`
+    return db.transaction(trx =>
+    trx.raw(
+        `TRUNCATE
+        thingful_things,
+        thingful_users,
+        thingful_reviews
+        `
+    )
+    .then(() =>
+      Promise.all([
+        trx.raw(`ALTER SEQUENCE blogful_articles_id_seq minvalue 0 START WITH 1`),
+        trx.raw(`ALTER SEQUENCE blogful_users_id_seq minvalue 0 START WITH 1`),
+        trx.raw(`ALTER SEQUENCE blogful_comments_id_seq minvalue 0 START WITH 1`),
+        trx.raw(`SELECT setval('blogful_articles_id_seq', 0)`),
+        trx.raw(`SELECT setval('blogful_users_id_seq', 0)`),
+        trx.raw(`SELECT setval('blogful_comments_id_seq', 0)`),
+      ])
+    )
+  )
+}
+
+function seedUsers(db, users) {
+  const preppedUsers = users.map(user => ({
+    ...user,
+    password: bcrypt.hashSync(user.password, 12)
+  }))
+  return db.into('thingful_users').insert(preppedUsers)
+    .then(() => 
+    db.raw(
+      `SELECT setval('thingful_users_id_seq', ?)`,
+      [users[users.length - 1].id],
+    )
   )
 }
 
 function seedThingsTables(db, users, things, reviews=[]) {
-  return db
-    .into('thingful_users')
-    .insert(users)
-    .then(() =>
-      db
-        .into('thingful_things')
-        .insert(things)
+  return db.transaction(async trx => {
+    await seedUsers(trx, users);
+    await trx.into('thingful_articles').insert(articles)
+    await trx.raw(
+      `SELECT setval('thingful_articles_id_seq', ?)`,
+      [articles[articles.length - 1].id],
     )
-    .then(() =>
-      reviews.length && db.into('thingful_reviews').insert(reviews)
-    )
+    // only insert comments if there are some, also update the sequence counter
+    if (comments.length) {
+      await trx.into('blogful_comments').insert(comments)
+      await trx.raw(
+        `SELECT setval('blogful_comments_id_seq', ?)`,
+        [comments[comments.length - 1].id],
+      )
+    }
+  })
 }
 
 function seedMaliciousThing(db, user, thing) {
-  return db
-    .into('thingful_users')
-    .insert([user])
+  return seedUsers(db, [user])
     .then(() =>
       db
         .into('thingful_things')
@@ -273,4 +304,5 @@ module.exports = {
   seedThingsTables,
   seedMaliciousThing,
   makeAuthHeader,
+  seedUsers,
 }
